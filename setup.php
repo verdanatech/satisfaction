@@ -27,61 +27,69 @@
  --------------------------------------------------------------------------
  */
 
+global $CFG_GLPI;
+
 /**
  * Init the hooks of the plugins -Needed
  */
 
-define ("PLUGIN_SATISFACTION_VERSION", "1.6.2");
+use Glpi\Plugin\Hooks;
+
+define("PLUGIN_SATISFACTION_VERSION", "1.7.0");
 
 // Minimal GLPI version, inclusive
-define('PLUGIN_SATISFACTION_MIN_GLPI', '10.0');
+define('PLUGIN_SATISFACTION_MIN_GLPI', '11.0');
 // Maximum GLPI version, exclusive
-define('PLUGIN_SATISFACTION_MAX_GLPI', '11.0');
+define('PLUGIN_SATISFACTION_MAX_GLPI', '12.0');
+$root = $CFG_GLPI['root_doc'] . '/plugins/satisfaction';
+define("PLUGINSATISFACTION_WEBDIR", $root);
+function plugin_init_satisfaction()
+{
+    global $PLUGIN_HOOKS;
 
-function plugin_init_satisfaction() {
-   global $PLUGIN_HOOKS;
+    $PLUGIN_HOOKS['csrf_compliant']['satisfaction'] = true;
+    $PLUGIN_HOOKS['change_profile']['satisfaction'] = [PluginSatisfactionProfile::class, 'initProfile'];
 
-   $PLUGIN_HOOKS['csrf_compliant']['satisfaction'] = true;
-   $PLUGIN_HOOKS['change_profile']['satisfaction'] = [PluginSatisfactionProfile::class, 'initProfile'];
+    if (Plugin::isPluginActive('satisfaction')) {
+       //if glpi is loaded
+        if (Session::getLoginUserID()) {
+            Plugin::registerClass(
+                PluginSatisfactionProfile::class,
+                ['addtabon' => Profile::class]
+            );
 
-   if (Plugin::isPluginActive('satisfaction')) {
+            $PLUGIN_HOOKS['pre_item_form']['satisfaction'] = [
+                PluginSatisfactionSurveyAnswer::class, 'displaySatisfaction'];
 
-      //if glpi is loaded
-      if (Session::getLoginUserID()) {
+            $PLUGIN_HOOKS['pre_item_update']['satisfaction'][TicketSatisfaction::class] = [
+                PluginSatisfactionSurveyAnswer::class, 'preUpdateSatisfaction'];
 
-         Plugin::registerClass(PluginSatisfactionProfile::class,
-                               ['addtabon' => Profile::class]);
-
-         $PLUGIN_HOOKS['pre_item_form']['satisfaction'] = [PluginSatisfactionSurveyAnswer::class, 'displaySatisfaction'];
-
-         $PLUGIN_HOOKS['pre_item_update']['satisfaction'][TicketSatisfaction::class] = [PluginSatisfactionSurveyAnswer::class,
-                                                                                        'preUpdateSatisfaction'];
-
-         $PLUGIN_HOOKS['item_get_events']['satisfaction'] =
+            $PLUGIN_HOOKS['item_get_events']['satisfaction'] =
             ['NotificationTargetTicket' => ['PluginSatisfactionNotificationTargetTicket', 'addEvents']];
 
-         $PLUGIN_HOOKS['item_delete']['satisfaction'] = ['Ticket' => ['PluginSatisfactionReminder', 'deleteItem']];
+            $PLUGIN_HOOKS['item_delete']['satisfaction'] = ['Ticket' => ['PluginSatisfactionReminder', 'deleteItem']];
 
-         //current user must have config rights
-         if (Session::haveRight('plugin_satisfaction', READ)) {
-            $config_page = 'front/survey.php';
-            $PLUGIN_HOOKS['config_page']['satisfaction'] = $config_page;
+           //current user must have config rights
+            if (Session::haveRight('plugin_satisfaction', READ)) {
+                $config_page = 'front/survey.php';
+                $PLUGIN_HOOKS['config_page']['satisfaction'] = $config_page;
 
-            $PLUGIN_HOOKS["menu_toadd"]['satisfaction'] = ['admin' => PluginSatisfactionMenu::class];
-         }
+                $PLUGIN_HOOKS["menu_toadd"]['satisfaction'] = ['admin' => PluginSatisfactionMenu::class];
+            }
 
-         if (isset($_SESSION['glpiactiveprofile']['interface'])
+            if (isset($_SESSION['glpiactiveprofile']['interface'])
              && $_SESSION['glpiactiveprofile']['interface'] == 'central') {
-            $PLUGIN_HOOKS['add_javascript']['satisfaction'] = ["satisfaction.js"];
-         }
-         if (class_exists('PluginMydashboardMenu')) {
-            $PLUGIN_HOOKS['mydashboard']['satisfaction'] = [PluginSatisfactionDashboard::class];
-         }
-      }
+                $PLUGIN_HOOKS[Hooks::ADD_JAVASCRIPT]['satisfaction'] = ["satisfaction.js"];
+            }
+            if (class_exists('PluginMydashboardMenu')) {
+                $PLUGIN_HOOKS['mydashboard']['satisfaction'] = [PluginSatisfactionDashboard::class];
+            }
+        }
 
-      $PLUGIN_HOOKS['item_get_datas']['satisfaction'] = [NotificationTargetTicket::class => [PluginSatisfactionSurveyAnswer::class,
+        $PLUGIN_HOOKS['item_get_datas']['satisfaction'] = [
+            NotificationTargetTicket::class => [PluginSatisfactionSurveyAnswer::class,
          'addNotificationDatas']];
-   }
+    }
 }
 
 /**
@@ -89,12 +97,13 @@ function plugin_init_satisfaction() {
  *
  * @return array
  */
-function plugin_version_satisfaction() {
+function plugin_version_satisfaction()
+{
 
-   return [
+    return [
       'name'           => __("More satisfaction", 'satisfaction'),
       'version'        => PLUGIN_SATISFACTION_VERSION,
-      'author'         => "<a href='http://blogglpi.infotel.com/'>Infotel</a>",
+        'author'       => "<a href='https//blogglpi.infotel.com'>Infotel</a>, Xavier CAILLAUD",
       'license'        => 'GPLv2+',
       'homepage'       => 'https://github.com/pluginsGLPI/satisfaction',
       'requirements'   => [
@@ -103,5 +112,5 @@ function plugin_version_satisfaction() {
             'max' => PLUGIN_SATISFACTION_MAX_GLPI,
          ]
       ]
-   ];
+    ];
 }

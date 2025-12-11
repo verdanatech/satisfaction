@@ -47,11 +47,13 @@ class PluginSatisfactionProfile extends Profile
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
         if ($item->getType() == 'Profile' && $item->getField('interface') != 'helpdesk') {
-            return _n('Satisfaction survey', 'Satisfaction surveys', 2, 'satisfaction');
+            return self::createTabEntry(_n('Satisfaction survey', 'Satisfaction surveys', 2, 'satisfaction'));
         }
         return '';
     }
-
+    public static function getIcon() {
+        return PluginSatisfactionMenu::getIcon();
+    }
     /**
      * @param CommonGLPI $item
      * @param int        $tabnum
@@ -212,10 +214,14 @@ class PluginSatisfactionProfile extends Profile
             }
         }
 
-        foreach ($DB->request("SELECT *
-                           FROM `glpi_profilerights` 
-                           WHERE `profiles_id`='" . $_SESSION['glpiactiveprofile']['id'] . "' 
-                              AND `name` LIKE '%plugin_eventsmanager%'") as $prof) {
+        $it = $DB->request([
+            'FROM' => 'glpi_profilerights',
+            'WHERE' => [
+                'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
+                'name' => ['LIKE', '%plugin_satisfaction%']
+            ]
+        ]);
+        foreach ($it as $prof) {
             if (isset($_SESSION['glpiactiveprofile'])) {
                 $_SESSION['glpiactiveprofile'][$prof['name']] = $prof['rights'];
             }

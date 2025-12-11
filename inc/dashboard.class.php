@@ -27,9 +27,16 @@
  --------------------------------------------------------------------------
  */
 
+use GlpiPlugin\Mydashboard\Datatable;
+use GlpiPlugin\Mydashboard\Helper;
+use GlpiPlugin\Mydashboard\Html as MydashboardHtml;
+use GlpiPlugin\Mydashboard\Menu;
+use GlpiPlugin\Mydashboard\Widget;
+
 /**
- * Class PluginResourcesDashboard
+ * Class PluginSatisfactionDashboard
  */
+#[AllowDynamicProperties]
 class PluginSatisfactionDashboard extends CommonGLPI
 {
     // Widget identifiers
@@ -49,7 +56,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
     const PERIOD_SELECTOR_HTML_ID = "period-selector";
 
     /**
-     * PluginResourcesDashboard constructor.
+     * Dashboard constructor.
      *
      * @param array $options
      */
@@ -66,10 +73,10 @@ class PluginSatisfactionDashboard extends CommonGLPI
     {
 
         $widgets = [
-            PluginMydashboardMenu::$HELPDESK => [
+            Menu::$HELPDESK => [
 
                 $this->getType().self::SATISFACTION_SURVEY => ["title"   => __('Summary of satisfaction surveys', 'satisfaction'),
-                                                               "type"    => PluginMydashboardWidget::$KPI,
+                                                               "type"    => Widget::$KPI,
                                                                "comment" => ""],
             ],
         ];
@@ -125,7 +132,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
     {
         $interval = [];
 
-        switch($idPeriod) {
+        switch ($idPeriod) {
             case self::FIRST_TRIMESTER_PERIOD:
                 $interval['begin'] = $year.'-01-01 00:00:00';
                 $interval['end'] = $year.'-03-31 00:00:00';
@@ -153,7 +160,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
     /**
      * @param $widgetId
      *
-     * @return \PluginMydashboardDatatable
+     * @return \Datatable
      */
     public function getWidgetContentForItem($widgetId, $opt = [])
     {
@@ -170,7 +177,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
 
         $criterias = ['begin', 'end', 'year', self::PERIOD_SELECTOR_HTML_ID];
         $params    = ["criterias"   => $criterias, "opt"=> $opt];
-        $options   = PluginMydashboardHelper::manageCriterias($params);
+        $options   = Helper::manageCriterias($params);
 
         $period = isset($opt[self::PERIOD_SELECTOR_HTML_ID]) ? $opt[self::PERIOD_SELECTOR_HTML_ID] : null ;
         $year = isset($options['opt']['year']) ? $options['opt']['year'] : date("Y");
@@ -187,7 +194,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
 
         $opt       = $options['opt'];
 
-        $widget = new PluginMydashboardHtml();
+        $widget = new MydashboardHtml();
         $widget->setWidgetTitle(self::getWidgetTitle($widgetId));
 
         $content = "";
@@ -226,7 +233,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
             $query .= " WHERE 1=1";
             addDateCriteria($query, $opt['begin'], $opt['end']);
 
-            $result = $DB->query($query);
+            $result = $DB->doQuery($query);
 
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
@@ -239,7 +246,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
             $query .= " WHERE 1=1";
             addDateCriteria($query, $opt['begin'], $opt['end']);
 
-            $result = $DB->query($query);
+            $result = $DB->doQuery($query);
 
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
@@ -252,7 +259,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
             $query .= " WHERE date_answered IS NULL";
             addDateCriteria($query, $opt['begin'], $opt['end']);
 
-            $result = $DB->query($query);
+            $result = $DB->doQuery($query);
 
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
@@ -265,7 +272,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
             $query .= " WHERE date_answered IS NOT NULL";
             addDateCriteria($query, $opt['begin'], $opt['end']);
 
-            $result = $DB->query($query);
+            $result = $DB->doQuery($query);
 
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
@@ -278,7 +285,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
             $query .= " WHERE date_answered IS NOT NULL";
             addDateCriteria($query, $opt['begin'], $opt['end']);
 
-            $result = $DB->query($query);
+            $result = $DB->doQuery($query);
 
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
@@ -351,7 +358,7 @@ class PluginSatisfactionDashboard extends CommonGLPI
                "canvas"    => false,
                "nb"        => 1];
 
-            $graphHeader = PluginMydashboardHelper::getGraphHeader($params);
+            $graphHeader = Helper::getGraphHeader($params);
 
             self::addPeriodCriteriaToGraphHeader($graphHeader);
 
