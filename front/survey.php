@@ -28,18 +28,19 @@
  */
 
 
-include('../../../inc/includes.php');
+use Glpi\Exception\Http\AccessDeniedHttpException;
+use GlpiPlugin\Satisfaction\Menu;
+use GlpiPlugin\Satisfaction\Survey;
 
-Html::header(PluginSatisfactionSurvey::getTypeName(2), '', "admin", "pluginsatisfactionmenu");
+Html::header(Survey::getTypeName(2), '', "admin", Menu::class);
 
-$satisfaction = new PluginSatisfactionSurvey();
+$satisfaction = new Survey();
 $satisfaction->checkGlobal(READ);
 
 if ($satisfaction->canView()) {
-   Search::show('PluginSatisfactionSurvey');
-
+    Search::show(Survey::class);
 } else {
-   Html::displayRightError();
+    throw new AccessDeniedHttpException();
 }
 
 Html::footer();
