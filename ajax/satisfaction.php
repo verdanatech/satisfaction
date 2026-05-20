@@ -1,4 +1,5 @@
 <?php
+
 /*
  * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
  -------------------------------------------------------------------------
@@ -28,10 +29,12 @@
  */
 
 
-include ('../../../inc/includes.php');
+Session::checkLoginUser();
 
 if (isset($_POST['action_default_value'])) {
-   Dropdown::showNumber('default_value', ['max'   => $_POST['default_value'],
-                                   'min'   => 1,
-                                   'value' => $_POST['value']]);
+    Dropdown::showNumber('default_value', [
+        'max'   => intval($_POST['default_value']),
+        'min'   => 1,
+        'value' => intval($_POST['value']),
+    ]);
 }

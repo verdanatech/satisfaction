@@ -27,22 +27,27 @@
  --------------------------------------------------------------------------
  */
 
-include('../../../inc/includes.php');
+
+use Glpi\Exception\Http\NotFoundHttpException;
+use GlpiPlugin\Satisfaction\SurveyTranslation;
+
+Session::checkLoginUser();
+Session::checkRight('plugin_satisfaction', UPDATE);
 
 if (!isset($_POST['survey_id']) || !isset($_POST['action'])) {
-    exit();
+    throw new NotFoundHttpException();
 }
 
-$redirection = Plugin::getWebDir('satisfaction')."/front/survey.form.php?id=";
-$translation = new PluginSatisfactionSurveyTranslation();
-switch($_POST['action']){
+$redirection = PLUGINSATISFACTION_WEBDIR."/front/survey.form.php?id=";
+$translation = new SurveyTranslation();
+switch ($_POST['action']) {
     case 'NEW':
-       $translation->newSurveyTranslation($_POST);
-       Html::redirect($redirection.$_POST['survey_id']);
-       break;
+        $translation->newSurveyTranslation($_POST);
+        Html::redirect($redirection.$_POST['survey_id']);
+        break;
 
     case 'EDIT':
-       $translation->editSurveyTranslation($_POST);
-       Html::redirect($redirection.$_POST['survey_id']);
-       break;
+        $translation->editSurveyTranslation($_POST);
+        Html::redirect($redirection.$_POST['survey_id']);
+        break;
 }
