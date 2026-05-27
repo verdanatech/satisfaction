@@ -94,7 +94,7 @@ class PluginSatisfactionSurvey extends CommonDBTM {
     *
     * @return boolean
     **/
-   function canCreateItem() {
+   function canCreateItem(): bool {
 
       if (!$this->checkEntity()) {
          return false;
