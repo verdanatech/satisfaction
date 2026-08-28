@@ -1,58 +1,62 @@
 <?php
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
 
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
-
-include ('../../../inc/includes.php');
+use Glpi\Exception\Http\NotFoundHttpException;
+use GlpiPlugin\Satisfaction\Survey;
+use GlpiPlugin\Satisfaction\SurveyTranslation;
 
 if (!isset($_POST['survey_id']) || !isset($_POST['action'])) {
-   exit();
+    throw new NotFoundHttpException();
 }
 
 global $CFG_GLPI;
-$redirection = Plugin::getWebDir('satisfaction')."/front/survey.form.php?id=";
+$redirection = PLUGINSATISFACTION_WEBDIR . "/front/survey.form.php?id=";
 
-$translation = new PluginSatisfactionSurveyTranslation();
+$translation = new SurveyTranslation();
 
-switch($_POST['action']){
-   case 'GET':
-      header("Content-Type: text/html; charset=UTF-8");
-      Html::header_nocache();
-      Session::checkLoginUser();
-      $translation->showSurveyTranslationForm($_POST);
-      Html::ajaxFooter();
-      break;
-   case 'NEW':
-      $translation->newSurveyTranslation($_POST);
-      Html::redirect($redirection.$_POST['survey_id']);
-      break;
-   case 'EDIT':
-      $translation->editSurveyTranslation($_POST);
-      Html::redirect($redirection.$_POST['survey_id']);
-      break;
+switch ($_POST['action']) {
+    case 'GET':
+        header("Content-Type: text/html; charset=UTF-8");
+        Html::header_nocache();
+        // showSurveyTranslationForm enforces the right/entity check on the targeted survey
+        $translation->showSurveyTranslationForm($_POST);
+        break;
+    case 'NEW':
+        // Enforce existence, entity scoping and UPDATE right on the targeted survey (anti-IDOR)
+        (new Survey())->check((int) $_POST['survey_id'], UPDATE);
+        $translation->newSurveyTranslation($_POST);
+        Html::redirect($redirection . $_POST['survey_id']);
+        break;
+    case 'EDIT':
+        // Enforce existence, entity scoping and UPDATE right on the targeted survey (anti-IDOR)
+        (new Survey())->check((int) $_POST['survey_id'], UPDATE);
+        $translation->editSurveyTranslation($_POST);
+        Html::redirect($redirection . $_POST['survey_id']);
+        break;
 }
