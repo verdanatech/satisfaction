@@ -1,31 +1,30 @@
 <?php
 
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
-
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
 use GlpiPlugin\Satisfaction\Menu;
@@ -77,7 +76,7 @@ function plugin_satisfaction_install()
     foreach ($classes as $old => $new) {
         $displayusers = $DB->request([
             'SELECT' => [
-                'users_id'
+                'users_id',
             ],
             'DISTINCT' => true,
             'FROM' => 'glpi_displaypreferences',
@@ -91,13 +90,13 @@ function plugin_satisfaction_install()
                 $iterator = $DB->request([
                     'SELECT' => [
                         'num',
-                        'id'
+                        'id',
                     ],
                     'FROM' => 'glpi_displaypreferences',
                     'WHERE' => [
                         'itemtype' => $old,
                         'users_id' => $displayuser['users_id'],
-                        'interface' => 'central'
+                        'interface' => 'central',
                     ],
                 ]);
 
@@ -105,14 +104,14 @@ function plugin_satisfaction_install()
                     foreach ($iterator as $data) {
                         $iterator2 = $DB->request([
                             'SELECT' => [
-                                'id'
+                                'id',
                             ],
                             'FROM' => 'glpi_displaypreferences',
                             'WHERE' => [
                                 'itemtype' => $new,
                                 'users_id' => $displayuser['users_id'],
                                 'num' => $data['num'],
-                                'interface' => 'central'
+                                'interface' => 'central',
                             ],
                         ]);
                         if (count($iterator2) > 0) {
@@ -121,7 +120,7 @@ function plugin_satisfaction_install()
                                     'glpi_displaypreferences',
                                     [
                                         'id' => $dataid['id'],
-                                    ]
+                                    ],
                                 );
                                 $DB->doQuery($query);
                             }
@@ -133,7 +132,7 @@ function plugin_satisfaction_install()
                                 ],
                                 [
                                     'id' => $data['id'],
-                                ]
+                                ],
                             );
                             $DB->doQuery($query);
                         }
@@ -197,7 +196,8 @@ function plugin_satisfaction_uninstall()
 
     NotificationTargetTicket::uninstall();
 
-    CronTask::Register(Reminder::class, Reminder::CRON_TASK_NAME, DAY_TIMESTAMP);
+    // Remove the plugin cron task instead of (re)registering it on uninstall
+    CronTask::unregister('satisfaction');
 
     return true;
 }

@@ -1,43 +1,47 @@
 <?php
 
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
-
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
 namespace GlpiPlugin\Satisfaction;
 
 use AllowDynamicProperties;
 use CommonGLPI;
+use DbUtils;
 use Dropdown;
+use Glpi\Application\View\TemplateRenderer;
+use Glpi\DBAL\QueryExpression;
+use GlpiPlugin\Mydashboard\Criteria;
 use GlpiPlugin\Mydashboard\Helper;
 use GlpiPlugin\Mydashboard\Html as MydashboardHtml;
 use GlpiPlugin\Mydashboard\Menu;
 use GlpiPlugin\Mydashboard\Widget;
 use Html;
+use Ticket;
 use TicketSatisfaction;
 
 /**
@@ -124,7 +128,7 @@ class Dashboard extends CommonGLPI
         if (is_null($idPeriod)) {
             return $titles;
         } else {
-            return $titles[$idPeriod];
+            return $titles[$idPeriod] ?? '';
         }
     }
 
@@ -186,22 +190,25 @@ class Dashboard extends CommonGLPI
         $params    = ["criterias"   => $criterias,
             "opt" => $opt];
 
-        $default = Helper::manageCriterias($params);
+        // manageCriterias() is a static method of the Criteria class, not Helper:
+        // calling it on Helper raised a fatal "undefined method".
+        $default = Criteria::manageCriterias($params);
 
-        $period = $opt[self::PERIOD_SELECTOR_HTML_ID] ?? null ;
-        $year = $options['opt']['year'] ?? date("Y");
+        $period = $opt[self::PERIOD_SELECTOR_HTML_ID] ?? null;
+        // $opt is the incoming option set; the previous code read/wrote an
+        // undefined $options['opt'] wrapper, so the computed begin/end interval
+        // never reached the queries and $opt was clobbered to a partial array.
+        $year = $opt['year'] ?? date("Y");
 
         // When period is chosen we set the interval of date with the year
         if (is_null($period) || intval($period) !== self::EMPTY_PERIOD) {
             $interval = self::getDateIntervalForPeriod($period, $year);
 
-            $options['opt']['begin'] = $interval['begin'];
-            $options['opt']['end'] = $interval['end'];
+            $opt['begin'] = $interval['begin'];
+            $opt['end']   = $interval['end'];
 
-            $options['opt'][self::PERIOD_SELECTOR_HTML_ID] = self::EMPTY_PERIOD;
+            $opt[self::PERIOD_SELECTOR_HTML_ID] = self::EMPTY_PERIOD;
         }
-
-        $opt       = $options['opt'];
 
         $widget = new MydashboardHtml();
         $widget->setWidgetTitle(self::getWidgetTitle($widgetId));
@@ -214,10 +221,10 @@ class Dashboard extends CommonGLPI
             'entities_id' => $_SESSION['glpiactive_entity'],
             'is_active' => 1,
         ])) {
-            $content .= '<div class="center">';
-            $content .= '<br><br>';
-            $content .= '<h4>' . __("There are no survey for current entity", "satisfaction") . '</h4>';
-            $content .= '</div>';
+            $content = TemplateRenderer::getInstance()->render(
+                '@satisfaction/dashboard_satisfaction_survey.html.twig',
+                ['has_survey' => false],
+            );
         } else {
             // Values
             $numberOfSurveys = 0;
@@ -226,107 +233,116 @@ class Dashboard extends CommonGLPI
             $numberSurveyAnswered = 0;
             $globalSatisfaction = 0;
 
+            // Restrict aggregates to the active entity: satisfaction rows are scoped
+            // through their parent ticket's entity (GLPI does not scope queries by itself).
+            $sat_table    = TicketSatisfaction::getTable();
+            $ticket_table = Ticket::getTable();
+            $entity_join  = [
+                'LEFT JOIN' => [
+                    $ticket_table => [
+                        'ON' => [
+                            $ticket_table => 'id',
+                            $sat_table    => 'tickets_id',
+                        ],
+                    ],
+                ],
+            ];
+            $entity_where = (new DbUtils())->getEntitiesRestrictCriteria($ticket_table, '', '', true);
+
             $date_where = [];
             if (!empty($opt['begin'])) {
-                $date_where[] = ['date_begin' => ['>=', new \QueryExpression('DATE(' . $DB->quoteValue($opt['begin']) . ')')]];
+                $date_where[] = [$sat_table . '.date_begin' => ['>=', new QueryExpression('DATE(' . $DB->quoteValue($opt['begin']) . ')')]];
             }
             if (!empty($opt['end'])) {
-                $date_where[] = ['date_begin' => ['<', new \QueryExpression('DATE(' . $DB->quoteValue($opt['end']) . ')')]];
+                $date_where[] = [$sat_table . '.date_begin' => ['<', new QueryExpression('DATE(' . $DB->quoteValue($opt['end']) . ')')]];
             }
+            $base_where = array_merge($date_where, $entity_where);
 
             // Number of satisfaction surveys
             $row = $DB->request([
                 'COUNT' => 'nb',
-                'FROM'  => TicketSatisfaction::getTable(),
-                'WHERE' => $date_where,
+                'FROM'  => $sat_table,
+                'LEFT JOIN' => $entity_join['LEFT JOIN'],
+                'WHERE' => $base_where,
             ])->current();
             $numberOfSurveys = $row ? (int) $row['nb'] : 0;
 
             // Number of concerned tickets
             $row = $DB->request([
-                'SELECT' => ['COUNT DISTINCT' => 'tickets_id AS nb'],
-                'FROM'   => TicketSatisfaction::getTable(),
-                'WHERE'  => $date_where,
+                'SELECT' => ['COUNT DISTINCT' => $sat_table . '.tickets_id AS nb'],
+                'FROM'   => $sat_table,
+                'LEFT JOIN' => $entity_join['LEFT JOIN'],
+                'WHERE'  => $base_where,
             ])->current();
             $numberOfImpactedTickets = $row ? (int) $row['nb'] : 0;
 
             // Surveys not answered
             $row = $DB->request([
                 'COUNT' => 'nb',
-                'FROM'  => TicketSatisfaction::getTable(),
-                'WHERE' => array_merge($date_where, ['date_answered' => null]),
+                'FROM'  => $sat_table,
+                'LEFT JOIN' => $entity_join['LEFT JOIN'],
+                'WHERE' => array_merge($base_where, [$sat_table . '.date_answered' => null]),
             ])->current();
             $numberSurveyNotAnswered = $row ? (int) $row['nb'] : 0;
 
             // Surveys answered
             $row = $DB->request([
-                'SELECT' => ['COUNT DISTINCT' => 'tickets_id AS nb'],
-                'FROM'   => TicketSatisfaction::getTable(),
-                'WHERE'  => array_merge($date_where, ['NOT' => ['date_answered' => null]]),
+                'SELECT' => ['COUNT DISTINCT' => $sat_table . '.tickets_id AS nb'],
+                'FROM'   => $sat_table,
+                'LEFT JOIN' => $entity_join['LEFT JOIN'],
+                'WHERE'  => array_merge($base_where, ['NOT' => [$sat_table . '.date_answered' => null]]),
             ])->current();
             $numberSurveyAnswered = $row ? (int) $row['nb'] : 0;
 
             // Global satisfaction
             $row = $DB->request([
-                'SELECT' => [new \QueryExpression('AVG(satisfaction) AS nb')],
-                'FROM'   => TicketSatisfaction::getTable(),
-                'WHERE'  => array_merge($date_where, ['NOT' => ['date_answered' => null]]),
+                'SELECT' => [new QueryExpression('AVG(' . $DB->quoteName($sat_table . '.satisfaction') . ') AS nb')],
+                'FROM'   => $sat_table,
+                'LEFT JOIN' => $entity_join['LEFT JOIN'],
+                'WHERE'  => array_merge($base_where, ['NOT' => [$sat_table . '.date_answered' => null]]),
             ])->current();
             $globalSatisfaction = round($row ? (float) $row['nb'] : 0, 1);
 
-            function displayElement($color, $icon, $title, $value)
-            {
-                $elem = '<div class="nb" style="color:' . $color . '">';
-                //$elem.= '<a style="color:'.$color.'" target="_blank" href="" title="'.$title.'">';
-                $elem .= '<i style="color:' . $color . ';font-size:34px" class="fa ' . $icon . ' fa-3x fa-border"></i>';
-                $elem .= '<h3>';
-                $elem .= '<span class="counter count-number">' . $value . '</span>';
-                $elem .= '</h3>';
-                $elem .= '<p class="count-text ">' . $title . '</p>';
-                //$elem.= '</a>';
-                $elem .= '</div>';
-
-                return $elem;
-            }
-
-            // Add css and javascript to display stars with rateit
-            $content = Html::css('public/lib/jquery.rateit.css');
+            // Register the rateit JS asset (script registration stays in PHP); the
+            // rateit CSS <link> and the whole widget body are produced by Twig.
             Html::requireJs('rateit');
 
-            $content .= '<div class="tickets-stats">';
-            $content .= displayElement(
-                "grey",
-                "fa-exclamation-circle",
-                __("Number of surveys", "satisfaction"),
-                $numberOfSurveys
-            );
-            $content .= displayElement(
-                "grey",
-                "fa-id-card",
-                __("Number of concerned tickets", "satisfaction"),
-                $numberOfImpactedTickets
-            );
-            $content .= displayElement(
-                "indianred",
-                "fa-times",
-                __("Survey not answered", "satisfaction"),
-                $numberSurveyNotAnswered
-            );
-            $content .= displayElement(
-                "green",
-                "fa-check",
-                __("Survey answered", "satisfaction"),
-                $numberSurveyAnswered
-            );
+            $elements = [
+                [
+                    'color' => 'grey',
+                    'icon'  => 'fa-exclamation-circle',
+                    'title' => __('Number of surveys', 'satisfaction'),
+                    'value' => $numberOfSurveys,
+                ],
+                [
+                    'color' => 'grey',
+                    'icon'  => 'fa-id-card',
+                    'title' => __('Number of concerned tickets', 'satisfaction'),
+                    'value' => $numberOfImpactedTickets,
+                ],
+                [
+                    'color' => 'indianred',
+                    'icon'  => 'fa-times',
+                    'title' => __('Survey not answered', 'satisfaction'),
+                    'value' => $numberSurveyNotAnswered,
+                ],
+                [
+                    'color' => 'green',
+                    'icon'  => 'fa-check',
+                    'title' => __('Survey answered', 'satisfaction'),
+                    'value' => $numberSurveyAnswered,
+                ],
+            ];
 
-            $content .= '<div>';
-            $content .= '<h3 style="color:grey">';
-            $content .= '<span>' . __("Global satisfaction", "satisfaction") . '</span>';
-            $content .= '</h3>';
-            $content .= '<h3>' . $globalSatisfaction . '</h3>';
-            $content .= '<div class="rateit" data-rateit-value="' . $globalSatisfaction . '" data-rateit-ispreset="true" data-rateit-readonly="true"></div>';
-            $content .= "</div>";
-            $content .= "</div>";
+            $content = TemplateRenderer::getInstance()->render(
+                '@satisfaction/dashboard_satisfaction_survey.html.twig',
+                [
+                    'has_survey'          => true,
+                    'rateit_css'          => Html::css('public/lib/jquery.rateit.css'),
+                    'elements'            => $elements,
+                    'global_satisfaction' => $globalSatisfaction,
+                ],
+            );
 
             $params = ["widgetId"  => $widgetId,
                 "name"      => str_replace(' ', '', self::getWidgetTitle($widgetId)),

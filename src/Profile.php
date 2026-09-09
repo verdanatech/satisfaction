@@ -1,37 +1,37 @@
 <?php
 
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
-
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
 namespace GlpiPlugin\Satisfaction;
 
 use CommonGLPI;
 use DbUtils;
+use Glpi\Application\View\TemplateRenderer;
 use Html;
 use ProfileRight;
 use Session;
@@ -49,7 +49,7 @@ class Profile extends \Profile
 
     /**
      * @param CommonGLPI $item
-     * @param int        $withtemplate
+     * @param int $withtemplate
      *
      * @return string|translated
      */
@@ -60,26 +60,41 @@ class Profile extends \Profile
         }
         return '';
     }
+
     public static function getIcon()
     {
         return Menu::getIcon();
     }
+
     /**
      * @param CommonGLPI $item
-     * @param int        $tabnum
-     * @param int        $withtemplate
+     * @param int $tabnum
+     * @param int $withtemplate
      *
      * @return bool
      */
-    public static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0)
-    {
-        if ($item->getType() == 'Profile') {
-            $ID   = $item->getID();
-            $prof = new self();
-
-            self::addDefaultProfileInfos($ID, ['plugin_satisfaction' => 0]);
-            $prof->showForm($ID);
+    public static function displayTabContentForItem(
+        CommonGLPI $item,
+        $tabnum = 1,
+        $withtemplate = 0
+    ) {
+        if (!$item instanceof \Profile || !self::canView()) {
+            return false;
         }
+
+        $profile = new \Profile();
+        $profile->getFromDB($item->getID());
+
+        $rights = self::getAllRights(true);
+
+        $twig = TemplateRenderer::getInstance();
+        $twig->display('@satisfaction/profile.html.twig', [
+            'id' => $item->getID(),
+            'profile' => $profile,
+            'title' => self::getTypeName(Session::getPluralNumber()),
+            'rights' => $rights,
+        ]);
+
         return true;
     }
 
@@ -106,17 +121,17 @@ class Profile extends \Profile
         foreach ($rights as $right => $value) {
             if ($dbu->countElementsInTable(
                 'glpi_profilerights',
-                ["profiles_id" => $profiles_id, "name" => $right]
+                ["profiles_id" => $profiles_id, "name" => $right],
             ) && $drop_existing) {
                 $profileRight->deleteByCriteria(['profiles_id' => $profiles_id, 'name' => $right]);
             }
             if (!$dbu->countElementsInTable(
                 'glpi_profilerights',
-                ["profiles_id" => $profiles_id, "name" => $right]
+                ["profiles_id" => $profiles_id, "name" => $right],
             )) {
                 $myright['profiles_id'] = $profiles_id;
-                $myright['name']        = $right;
-                $myright['rights']      = $value;
+                $myright['name'] = $right;
+                $myright['rights'] = $value;
                 $profileRight->add($myright);
 
                 //Add right to the current session
@@ -125,43 +140,6 @@ class Profile extends \Profile
         }
     }
 
-    /**
-     * Show profile form
-     *
-     * @param int  $profiles_id
-     * @param bool $openform
-     * @param bool $closeform
-     *
-     * @return nothing
-     * @internal param int $items_id id of the profile
-     * @internal param value $target url of target
-     */
-    public function showForm($profiles_id = 0, $openform = true, $closeform = true)
-    {
-        echo "<div class='firstbloc'>";
-        if (($canedit = Session::haveRightsOr(self::$rightname, [CREATE, UPDATE, PURGE])) && $openform) {
-            $profile = new \Profile();
-            echo "<form method='post' action='" . $profile->getFormURL() . "'>";
-        }
-
-        $profile = new \Profile();
-        $profile->getFromDB($profiles_id);
-        if ($profile->getField('interface') == 'central') {
-            $rights = $this->getAllRights();
-            $profile->displayRightsChoiceMatrix($rights, ['canedit'       => $canedit,
-                'default_class' => 'tab_bg_2',
-                'title'         => __('General')]);
-        }
-
-        if ($canedit && $closeform) {
-            echo "<div class='center'>";
-            echo Html::hidden('id', ['value' => $profiles_id]);
-            echo Html::submit(_sx('button', 'Save'), ['name' => 'update', 'class' => 'btn btn-primary']);
-            echo "</div>\n";
-            Html::closeForm();
-        }
-        echo "</div>";
-    }
 
     /**
      * @param bool $all
@@ -171,9 +149,10 @@ class Profile extends \Profile
     public static function getAllRights($all = false)
     {
         $rights = [
-            ['itemtype' => Survey::class,
-                'label'    => Survey::getTypeName(2),
-                'field'    => 'plugin_satisfaction',
+            [
+                'itemtype' => Survey::class,
+                'label' => Survey::getTypeName(2),
+                'field' => 'plugin_satisfaction',
             ],
         ];
 
@@ -213,12 +192,12 @@ class Profile extends \Profile
         global $DB;
 
         $profile = new self();
-        $dbu     = new DbUtils();
+        $dbu = new DbUtils();
         //Add new rights in glpi_profilerights table
         foreach ($profile->getAllRights(true) as $data) {
             if ($dbu->countElementsInTable(
                 "glpi_profilerights",
-                ["name" => $data['field']]
+                ["name" => $data['field']],
             ) == 0) {
                 ProfileRight::addProfileRights([$data['field']]);
             }

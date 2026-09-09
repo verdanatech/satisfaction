@@ -1,37 +1,37 @@
 <?php
 
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
-
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
 namespace GlpiPlugin\Satisfaction;
 
 use CommonDBTM;
 use DbUtils;
+use Glpi\Application\View\TemplateRenderer;
 use Dropdown;
 use Entity;
 use Html;
@@ -230,30 +230,16 @@ class Survey extends CommonDBTM
         $this->initForm($ID, $options);
         $this->showFormHeader($options);
 
-        echo "<tr class='tab_bg_1'>";
-        echo "<td>" . __('Name') . "</td>";
-        echo "<td>";
-        echo Html::input('name', ['value' => $this->fields['name'], 'size' => 40]);
-        echo "</td>";
-        echo "<td>" . __('Comments') . "</td>";
-        echo "<td>";
-        echo Html::textarea([
-            'name'    => 'comment',
-            'value'    => $this->fields["comment"],
-            'cols'    => '60',
-            'rows'    => '6',
-            'display' => false,
-        ]);
-        echo "</td></tr>";
-
-        echo "<tr class='tab_bg_1'>";
-        echo "<td>" . __('Active') . "</td>";
-        echo "<td>";
+        ob_start();
         Dropdown::showYesNo("is_active", $this->fields["is_active"]);
-        echo "</td><td colspan='2'></td></tr>";
+        $yesno_active = ob_get_clean();
+
+        TemplateRenderer::getInstance()->display('@satisfaction/survey.html.twig', [
+            'item'         => $this,
+            'yesno_active' => $yesno_active,
+        ]);
 
         $this->showFormButtons($options);
-        Html::closeForm();
 
         return true;
     }
@@ -276,13 +262,13 @@ class Survey extends CommonDBTM
                             $this->getTable(),
                             'entities_id',
                             $input['entities_id'],
-                            true
+                            true,
                         );
             $found = $this->find($condition);
             if (count($found) > 0) {
                 Session::addMessageAfterRedirect(__(
                     'Error : only one survey is allowed by entity',
-                    'satisfaction'
+                    'satisfaction',
                 ), false, ERROR);
                 return false;
             }
@@ -311,13 +297,13 @@ class Survey extends CommonDBTM
                            $this->getTable(),
                            'entities_id',
                            $input['entities_id'],
-                           true
+                           true,
                        );
             $found = $this->find($condition);
             if (count($found) > 0) {
                 Session::addMessageAfterRedirect(__(
                     'Error : only one survey is allowed by entity',
-                    'satisfaction'
+                    'satisfaction',
                 ), false, ERROR);
                 return false;
             }
@@ -369,7 +355,7 @@ class Survey extends CommonDBTM
             ],
             'WHERE'     => array_merge(
                 ['survey.is_active' => 1],
-                $dbu->getEntitiesRestrictCriteria('survey', 'entities_id', $entities_id, true)
+                $dbu->getEntitiesRestrictCriteria('survey', 'entities_id', $entities_id, true),
             ),
             'ORDER'     => 'glpi_entities.level DESC',
             'LIMIT'     => 1,
@@ -414,12 +400,15 @@ class Survey extends CommonDBTM
                         }
                     }
                 }
+                ob_start();
                 if ($entity_assign) {
                     Entity::dropdown();
                 }
-                echo "<br><br>" . Html::submit(
-                    _x('button', 'Duplicate'),
-                    ['name' => 'massiveaction', 'class' => 'btn btn-primary']
+                $entity_dropdown = ob_get_clean();
+
+                TemplateRenderer::getInstance()->display(
+                    '@satisfaction/massiveaction_duplicate.html.twig',
+                    ['entity_dropdown' => $entity_dropdown],
                 );
                 return true;
         }
@@ -465,19 +454,41 @@ class Survey extends CommonDBTM
      *
      * @since version 0.85
      *
-     * @return true if all ok
+     * @return bool true if all ok, false otherwise
      **/
     public function duplicateSurvey($ID, $entities_id)
     {
 
+        // Anti-IDOR: the target entity must be within the user's accessible scope
+        // (the dropdown is client-side only and can be bypassed by a forged request).
+        if (!Session::haveAccessToEntity((int) $entities_id)) {
+            return false;
+        }
+
         //duplicate survey
         $survey = new self();
-        $survey->getFromDB($ID);
+        if (!$survey->getFromDB($ID)) {
+            return false;
+        }
+
+        // Anti-IDOR: validate access to the SOURCE survey's own entity before copying
+        // it. MassiveAction populates $remainings straight from $_POST['items'] without
+        // a per-item can() check, so without this a request forged with a survey id from
+        // another entity would copy that survey (its questions and translations) into the
+        // caller's entity — a cross-entity read bypass. Mirror the target-entity check
+        // above and pass the recursive flag so a recursive survey declared in a parent
+        // entity stays duplicable from a child.
+        if (!Session::haveAccessToEntity(
+            (int) $survey->fields['entities_id'],
+            (bool) $survey->fields['is_recursive'],
+        )) {
+            return false;
+        }
 
         //Update fields of the new duplicate
         $survey->fields['name']        = sprintf(
             __('Copy of %s'),
-            $survey->fields['name']
+            $survey->fields['name'],
         );
         $survey->fields['is_active']   = 0;
         $survey->fields['entities_id'] = $entities_id;
@@ -492,7 +503,7 @@ class Survey extends CommonDBTM
         //find and duplicate questions
         $question_obj  = new SurveyQuestion();
         $questions = $question_obj->find(['plugin_satisfaction_surveys_id' => $ID]);
-        $questions = $questions;
+
         foreach ($questions as $question) {
             $question['plugin_satisfaction_surveys_id'] = $newID;
             $question_id = $question['id'];
@@ -506,7 +517,7 @@ class Survey extends CommonDBTM
                 'plugin_satisfaction_surveys_id' => $ID,
                 'glpi_plugin_satisfaction_surveyquestions_id' => $question_id,
             ]);
-            $translations = $translations;
+
             foreach ($translations as $translation) {
                 $translation_obj->newSurveyTranslation([
                     'survey_id' => $newID,

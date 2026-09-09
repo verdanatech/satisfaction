@@ -1,31 +1,30 @@
 <?php
 
-/*
- * @version $Id: HEADER 15930 2011-10-30 15:47:55Z tsmr $
- -------------------------------------------------------------------------
- satisfaction plugin for GLPI
- Copyright (C) 2016-2022 by the satisfaction Development Team.
-
- https://github.com/pluginsglpi/satisfaction
- -------------------------------------------------------------------------
-
- LICENSE
-
- This file is part of satisfaction.
-
- satisfaction is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
-
- satisfaction is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
- --------------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------------
+ * satisfaction plugin for GLPI
+ * Copyright (C) 2018-2026 by the satisfaction Development Team.
+ *
+ * https://github.com/pluginsGLPI/satisfaction
+ * -------------------------------------------------------------------------
+ *
+ * LICENSE
+ *
+ * This file is part of satisfaction.
+ *
+ * satisfaction is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * satisfaction is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with satisfaction. If not, see <http://www.gnu.org/licenses/>.
+ * --------------------------------------------------------------------------
  */
 
 namespace GlpiPlugin\Satisfaction;
@@ -33,6 +32,7 @@ namespace GlpiPlugin\Satisfaction;
 use CommonDBChild;
 use CommonGLPI;
 use DbUtils;
+use Glpi\Application\View\TemplateRenderer;
 use Html;
 use Ticket;
 use TicketSatisfaction;
@@ -122,39 +122,21 @@ class SurveyResult extends CommonDBChild
         // Total Number of events
         $total_number = countElementsInTable(
             "glpi_plugin_satisfaction_surveyanswers",
-            ['plugin_satisfaction_surveys_id' => $item->getID()]
+            ['plugin_satisfaction_surveys_id' => $item->getID()],
         );
 
-        // No Events in database
-        if ($total_number == 0) {
-            echo "<div class='center'>";
-            echo "<table class='tab_cadre_fixe'>";
-            echo "<tr class='tab_bg_1'><th>" . __('No result of the survey', 'satisfaction') . "</th></trclass>";
-            echo "</table>";
-            echo "</div><br>";
-            return;
-        }
+        $questions = [];
+        $rows      = [];
 
-        // Display the pager
-        Html::printAjaxPager(self::getTypeName($total_number), $start, $total_number, '', true);
-
-
-        echo "<div class='center'>";
-        echo "<table class='tab_cadre_fixehov'>";
         if ($total_number > 0) {
-            echo "<tr class='tab_bg_1'>";
-            echo "<th>" . __('ID') . "</th>";
-            echo "<th>" . __('Ticket') . "</th>";
+            // Display the pager
+            Html::printAjaxPager(self::getTypeName($total_number), $start, $total_number, '', true);
 
             $squestion_obj = new SurveyQuestion();
             foreach ($squestion_obj->find([
                 SurveyQuestion::$items_id => $item->getID()]) as $question) {
-                echo "<th>" . nl2br($question['name']) . "</th>";
+                $questions[] = $question['name'];
             }
-            echo "<th>" . __('Satisfaction with the resolution of the ticket', 'satisfaction') . "</th>";
-            echo "<th>" . __('Comments') . "</th>";
-            echo "<th>" . __('Response date to the satisfaction survey') . "</th>";
-            echo "</tr>";
 
             $dbu               = new DbUtils();
             $obj_survey_answer = new SurveyAnswer();
@@ -171,37 +153,41 @@ class SurveyResult extends CommonDBChild
 
             $iterator = $DB->request($query);
             foreach ($iterator as $data) {
-                echo "<tr class='tab_bg_1'>";
-
                 $ticket_satisfaction = new TicketSatisfaction();
                 $ticket_satisfaction->getFromDBByRequest(['WHERE'
                                                          => ["id" => $data['ticketsatisfactions_id']]]);
 
                 $ticket = new Ticket();
                 $ticket->getFromDB($ticket_satisfaction->getField('tickets_id'));
-                echo "<td>" . $ticket_satisfaction->getField('tickets_id') . "</td>";
-                echo "<td>" . $ticket->getLink() . "</td>";
 
-                $answers = $dbu->importArrayFromDB($data['answer']);
+                $answers          = $dbu->importArrayFromDB($data['answer']);
+                $answers_rendered = [];
                 foreach ($answers as $questions_id => $answer) {
-                    echo "<td>";
                     $squestion_obj->getFromDB($questions_id);
-                    echo $obj_survey_answer->getAnswer($squestion_obj->fields, $answer);
-                    echo "</td>";
+                    $answers_rendered[] = $obj_survey_answer->getAnswer($squestion_obj->fields, $answer);
                 }
-                echo "<td>" . $ticket_satisfaction->getField('satisfaction') . "</td>";
-                echo "<td>" . $ticket_satisfaction->getField('comment') . "</td>";
+
                 $date_answered = "";
                 if (!empty($ticket_satisfaction->getField('date_answered'))
                 && $ticket_satisfaction->getField('date_answered') != "N/A") {
                     $date_answered = $ticket_satisfaction->getField('date_answered');
                 }
-                echo "<td>" . Html::convDateTime($date_answered) . "</td>";
-                echo "</tr>";
+
+                $rows[] = [
+                    'tickets_id'   => (int) $ticket_satisfaction->getField('tickets_id'),
+                    'ticket_link'  => $ticket->getLink(),
+                    'answers'      => $answers_rendered,
+                    'satisfaction' => (int) $ticket_satisfaction->getField('satisfaction'),
+                    'comment'      => (string) $ticket_satisfaction->getField('comment'),
+                    'date'         => Html::convDateTime($date_answered),
+                ];
             }
         }
 
-        echo "</table>";
-        echo "</div>";
+        TemplateRenderer::getInstance()->display('@satisfaction/surveyresult.html.twig', [
+            'total_number' => $total_number,
+            'questions'    => $questions,
+            'rows'         => $rows,
+        ]);
     }
 }
